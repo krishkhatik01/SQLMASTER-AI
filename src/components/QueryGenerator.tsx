@@ -3,7 +3,7 @@ import { Zap, Code2, Clock, ChevronDown, AlertCircle, Copy, Download } from 'luc
 import { generateSQL } from '../lib/groq';
 
 type HistoryItem = { input: string; sql: string; dbType: string; timestamp: number };
-type Metadata = { complexity: string; tablesUsed: string[]; operations: string[] } | null;
+type Metadata = { complexity: string; tablesUsed: string[]; operations: string[]; sampleOutput: string } | null;
 
 const DB_TYPES = [
   { name: 'PostgreSQL', icon: '🐘' },
@@ -68,6 +68,44 @@ function Field({ style, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaEle
   );
 }
 
+function SampleTable({ markdown }: { markdown: string }) {
+  const lines = markdown.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return <pre style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'rgba(245,245,240,0.7)', margin: 0, whiteSpace: 'pre-wrap' }}>{markdown}</pre>;
+
+  const parseRow = (line: string) =>
+    line.split('|').map(c => c.trim()).filter(Boolean);
+
+  const headers = parseRow(lines[0]);
+  const isSeparator = (line: string) => /^[\s|:-]+$/.test(line);
+  const dataLines = lines.filter((l, i) => i !== 0 && !isSeparator(l));
+
+  const cellStyle: React.CSSProperties = {
+    padding: '8px 14px', fontSize: 13, fontFamily: 'JetBrains Mono, monospace',
+    borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap',
+  };
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          {headers.map((h, i) => (
+            <th key={i} style={{ ...cellStyle, color: '#d97706', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid rgba(217,119,6,0.25)' }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {dataLines.map((line, ri) => (
+          <tr key={ri} style={{ background: ri % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+            {parseRow(line).map((cell, ci) => (
+              <td key={ci} style={{ ...cellStyle, color: 'rgba(245,245,240,0.7)' }}>{cell}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function QueryGenerator() {
   const [input, setInput]       = useState('');
   const [schema, setSchema]     = useState('');
@@ -84,6 +122,7 @@ export default function QueryGenerator() {
   const [showSchema, setShowSchema]             = useState(false);
   const [history, setHistory]   = useState<HistoryItem[]>([]);
   const [metadata, setMetadata] = useState<Metadata>(null);
+  const [sampleOutput, setSampleOutput] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -109,12 +148,13 @@ export default function QueryGenerator() {
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
-    setLoading(true); setSQL(''); setExplanation(''); setError(''); setMetadata(null);
+    setLoading(true); setSQL(''); setExplanation(''); setError(''); setMetadata(null); setSampleOutput('');
     try {
       const result: any = await generateSQL({ input, schema, dbType, includeExplanation, addComments, complexity });
       setSQL(result.sql || '');
       setExplanation(result.explanation || '');
-      setMetadata({ complexity: result.complexity || 'Medium', tablesUsed: result.tablesUsed || [], operations: result.operations || [] });
+      setMetadata({ complexity: result.complexity || 'Medium', tablesUsed: result.tablesUsed || [], operations: result.operations || [], sampleOutput: result.sampleOutput || '' });
+      setSampleOutput(result.sampleOutput || '');
       saveHistory({ input, sql: result.sql, dbType });
     } catch (e: any) {
       setError(e.message || 'An unexpected error occurred.');
@@ -371,6 +411,16 @@ export default function QueryGenerator() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Sample Output ── */}
+      {sampleOutput && (
+        <div className="fade-in" style={{ ...S.card, padding: 20 }}>
+          <span style={S.label}>Sample Output</span>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <SampleTable markdown={sampleOutput} />
+          </div>
         </div>
       )}
 
